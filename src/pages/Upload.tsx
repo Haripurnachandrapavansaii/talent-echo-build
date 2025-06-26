@@ -58,22 +58,40 @@ const Upload = () => {
   }, [toast]);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('File input change triggered', e.target.files);
     const file = e.target.files?.[0];
-    if (file && isValidFileType(file)) {
-      setUploadedFile(file);
-      toast({
-        title: "File uploaded successfully",
-        description: `${file.name} is ready to be processed.`,
-      });
+    if (file) {
+      console.log('File selected:', file.name, file.type);
+      if (isValidFileType(file)) {
+        setUploadedFile(file);
+        toast({
+          title: "File uploaded successfully",
+          description: `${file.name} is ready to be processed.`,
+        });
+      } else {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a PDF, DOCX, or TXT file.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
   const isValidFileType = (file: File) => {
     const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
-    return validTypes.includes(file.type) || file.name.endsWith('.pdf') || file.name.endsWith('.docx') || file.name.endsWith('.txt');
+    const validExtensions = ['.pdf', '.docx', '.txt'];
+    
+    console.log('Validating file:', file.name, 'Type:', file.type);
+    
+    return validTypes.includes(file.type) || validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
   };
 
   const handleContinue = async () => {
+    console.log('Continue button clicked');
+    console.log('Uploaded file:', uploadedFile);
+    console.log('Manual text length:', manualText.trim().length);
+    
     if (!uploadedFile && !manualText.trim()) {
       toast({
         title: "No content to process",
@@ -101,6 +119,7 @@ const Upload = () => {
 
       // Upload file to storage if provided
       if (uploadedFile) {
+        console.log('Uploading file to storage...');
         const fileExt = uploadedFile.name.split('.').pop();
         fileName = `${Date.now()}.${fileExt}`;
         filePath = `${user.id}/${fileName}`;
@@ -110,13 +129,16 @@ const Upload = () => {
           .upload(filePath, uploadedFile);
 
         if (uploadError) {
+          console.error('Storage upload error:', uploadError);
           throw uploadError;
         }
 
         fileType = uploadedFile.type;
+        console.log('File uploaded successfully to:', filePath);
       }
 
       // Create resume record in database
+      console.log('Creating resume record in database...');
       const { data: resume, error: dbError } = await supabase
         .from('resumes')
         .insert({
@@ -132,8 +154,11 @@ const Upload = () => {
         .single();
 
       if (dbError) {
+        console.error('Database error:', dbError);
         throw dbError;
       }
+
+      console.log('Resume created:', resume);
 
       // Store resume ID for next step
       localStorage.setItem('current_resume_id', resume.id);
@@ -228,8 +253,8 @@ const Upload = () => {
                 id="file-upload"
               />
               <label htmlFor="file-upload">
-                <Button variant="outline" className="cursor-pointer">
-                  Choose File
+                <Button type="button" variant="outline" className="cursor-pointer" asChild>
+                  <span>Choose File</span>
                 </Button>
               </label>
             </div>
