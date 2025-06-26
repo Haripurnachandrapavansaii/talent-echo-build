@@ -4,16 +4,25 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useNavigate } from "react-router-dom";
-import { Upload as UploadIcon, FileText, AlertCircle, ArrowLeft } from "lucide-react";
+import { Upload as UploadIcon, FileText, AlertCircle, ArrowLeft, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const Upload = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, signOut } = useAuth();
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [manualText, setManualText] = useState("");
   const [showManualInput, setShowManualInput] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -64,22 +73,86 @@ const Upload = () => {
     return validTypes.includes(file.type) || file.name.endsWith('.pdf') || file.name.endsWith('.docx') || file.name.endsWith('.txt');
   };
 
-  const handleContinue = () => {
-    if (uploadedFile || manualText.trim()) {
-      // Store the data in localStorage for the demo
-      if (uploadedFile) {
-        localStorage.setItem('storyCV_file', uploadedFile.name);
-      }
-      if (manualText.trim()) {
-        localStorage.setItem('storyCV_text', manualText);
-      }
-      navigate('/parse');
-    } else {
+  const handleContinue = async () => {
+    if (!uploadedFile && !manualText.trim()) {
       toast({
         title: "No content to process",
         description: "Please upload a file or enter your resume text manually.",
         variant: "destructive",
       });
+      return;
+    }
+
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      let filePath = null;
+      let fileName = null;
+      let fileType = null;
+
+      // Upload file to storage if provided
+      if (uploadedFile) {
+        const fileExt = uploadedFile.name.split('.').pop();
+        fileName = `${Date.now()}.${fileExt}`;
+        filePath = `${user.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('resumes')
+          .upload(filePath, uploadedFile);
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        fileType = uploadedFile.type;
+      }
+
+      // Create resume record in database
+      const { data: resume, error: dbError } = await supabase
+        .from('resumes')
+        .insert({
+          user_id: user.id,
+          title: uploadedFile ? uploadedFile.name : 'Manual Input',
+          file_name: fileName,
+          file_path: filePath,
+          file_type: fileType,
+          content: manualText || null,
+          status: 'uploaded'
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        throw dbError;
+      }
+
+      // Store resume ID for next step
+      localStorage.setItem('current_resume_id', resume.id);
+
+      toast({
+        title: "Resume saved successfully",
+        description: "Proceeding to parse your resume.",
+      });
+
+      navigate('/parse');
+    } catch (error: any) {
+      console.error('Error saving resume:', error);
+      toast({
+        title: "Error saving resume",
+        description: error.message || "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -87,17 +160,27 @@ const Upload = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Header */}
       <header className="container mx-auto px-4 py-6">
-        <div className="flex items-center space-x-4">
-          <Button variant="ghost" onClick={() => navigate('/')} className="p-2">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
-              <FileText className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Button variant="ghost" onClick={() => navigate('/')} className="p-2">
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                <FileText className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                StoryCV
+              </span>
             </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              StoryCV
-            </span>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <span className="text-sm text-gray-600">Welcome, {user?.email}</span>
+            <Button variant="outline" onClick={handleSignOut}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
           </div>
         </div>
       </header>
@@ -196,10 +279,10 @@ const Upload = () => {
             <Button
               size="lg"
               onClick={handleContinue}
-              disabled={!uploadedFile && !manualText.trim()}
+              disabled={(!uploadedFile && !manualText.trim()) || loading}
               className="px-8 py-6 text-lg bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transition-all duration-300"
             >
-              Parse Resume
+              {loading ? 'Saving Resume...' : 'Parse Resume'}
             </Button>
           </div>
         </div>
