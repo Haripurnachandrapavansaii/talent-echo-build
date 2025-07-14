@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -7,6 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useNavigate } from "react-router-dom";
 import { Brain, ArrowLeft, Edit3, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { extractTextFromPDF } from "@/utils/pdfParser";
+import { parseResumeText } from "@/utils/resumeParser";
 
 interface ParsedData {
   name: string;
@@ -44,123 +45,28 @@ const Parse = () => {
   });
   const [editMode, setEditMode] = useState<string | null>(null);
 
-  const parseResumeText = (text: string): ParsedData => {
-    console.log('Parsing resume text:', text.substring(0, 200) + '...');
-    
-    // Simple text parsing logic
-    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-    
-    // Extract name (usually first meaningful line)
-    const name = lines.find(line => 
-      line.length > 2 && 
-      line.length < 50 && 
-      !line.includes('@') && 
-      !line.includes('http') &&
-      /^[A-Za-z\s]+$/.test(line)
-    ) || "Professional";
-
-    // Extract skills (look for common skill keywords)
-    const skillKeywords = ['javascript', 'react', 'node', 'python', 'java', 'html', 'css', 'sql', 'aws', 'docker', 'git'];
-    const skills = [];
-    const textLower = text.toLowerCase();
-    for (const keyword of skillKeywords) {
-      if (textLower.includes(keyword)) {
-        skills.push(keyword.charAt(0).toUpperCase() + keyword.slice(1));
-      }
-    }
-
-    // Look for email to extract basic info
-    const emailMatch = text.match(/[\w\.-]+@[\w\.-]+\.\w+/);
-    
-    // Extract roles (look for job titles and companies)
-    const roles = [];
-    const jobTitlePatterns = [
-      /engineer/i, /developer/i, /manager/i, /analyst/i, /designer/i, 
-      /specialist/i, /consultant/i, /coordinator/i, /lead/i, /senior/i
-    ];
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (jobTitlePatterns.some(pattern => pattern.test(line))) {
-        const nextLine = lines[i + 1] || '';
-        roles.push({
-          title: line,
-          company: nextLine.length > 0 && nextLine.length < 50 ? nextLine : "Company Name",
-          duration: "2022 - Present",
-          description: "Professional experience in " + line.toLowerCase()
-        });
-      }
-    }
-
-    // Extract education
-    const education = [];
-    const educationKeywords = ['university', 'college', 'degree', 'bachelor', 'master', 'phd', 'certification'];
-    for (const line of lines) {
-      if (educationKeywords.some(keyword => line.toLowerCase().includes(keyword))) {
-        education.push(line);
-      }
-    }
-
-    // Extract projects (look for project-like content)
-    const projects = [];
-    const projectKeywords = ['project', 'built', 'developed', 'created', 'designed'];
-    for (const line of lines) {
-      if (projectKeywords.some(keyword => line.toLowerCase().includes(keyword)) && line.length > 20) {
-        projects.push({
-          name: line.substring(0, 50) + (line.length > 50 ? '...' : ''),
-          tech_stack: skills.slice(0, 3).join(', ') || 'Various Technologies',
-          summary: line
-        });
-      }
-    }
-
-    return {
-      name,
-      roles: roles.length > 0 ? roles.slice(0, 3) : [{
-        title: "Professional Role",
-        company: "Company Name",
-        duration: "2022 - Present",
-        description: "Extracted from resume content"
-      }],
-      projects: projects.length > 0 ? projects.slice(0, 2) : [{
-        name: "Professional Project",
-        tech_stack: skills.join(', ') || 'Various Technologies',
-        summary: "Project details extracted from resume"
-      }],
-      skills: skills.length > 0 ? skills : ['Professional Skills'],
-      education: education.length > 0 ? education : ['Educational Background'],
-      certifications: [],
-      achievements: [],
-      target_role: roles.length > 0 ? roles[0].title : "Professional Role"
-    };
-  };
-
   const readFileContent = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      
-      reader.onload = (event) => {
-        const result = event.target?.result;
-        if (typeof result === 'string') {
-          resolve(result);
-        } else {
-          reject(new Error('Failed to read file as text'));
-        }
-      };
-      
-      reader.onerror = () => {
-        reject(new Error('Error reading file'));
-      };
-
-      // Read as text for now (works with .txt files)
-      // For PDF/DOCX, we'd need additional libraries
-      if (file.type === 'text/plain') {
+    console.log('Reading file:', file.name, file.type);
+    
+    if (file.type === 'application/pdf') {
+      return await extractTextFromPDF(file);
+    } else if (file.type === 'text/plain') {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const result = event.target?.result;
+          if (typeof result === 'string') {
+            resolve(result);
+          } else {
+            reject(new Error('Failed to read file as text'));
+          }
+        };
+        reader.onerror = () => reject(new Error('Error reading file'));
         reader.readAsText(file);
-      } else {
-        // For PDF/DOCX files, we'll use the manual text for now
-        resolve('');
-      }
-    });
+      });
+    } else {
+      throw new Error('Unsupported file type. Please use PDF or TXT files.');
+    }
   };
 
   useEffect(() => {
@@ -168,23 +74,44 @@ const Parse = () => {
       try {
         console.log('Starting resume processing...');
         
-        // Get uploaded file name and manual text from localStorage
+        // Get file from localStorage (stored as base64 or file reference)
         const uploadedFileName = localStorage.getItem('uploaded_file_name');
         const manualText = localStorage.getItem('manual_resume_text');
+        const fileData = localStorage.getItem('uploaded_file_data');
         
         console.log('Uploaded file name:', uploadedFileName);
         console.log('Manual text available:', !!manualText);
+        console.log('File data available:', !!fileData);
         
         let resumeText = '';
         
         if (manualText && manualText.trim()) {
           resumeText = manualText;
           console.log('Using manual text for parsing');
-        } else if (uploadedFileName) {
-          // For now, since we can't easily parse PDF/DOCX without additional libraries,
-          // we'll show a message about using manual text
-          console.log('File uploaded but using fallback parsing');
-          resumeText = `Resume file: ${uploadedFileName}\nPlease use the manual text input for better parsing results.`;
+        } else if (fileData && uploadedFileName) {
+          try {
+            // Convert base64 back to file and extract text
+            const byteCharacters = atob(fileData);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const file = new File([byteArray], uploadedFileName, { 
+              type: uploadedFileName.endsWith('.pdf') ? 'application/pdf' : 'text/plain' 
+            });
+            
+            resumeText = await readFileContent(file);
+            console.log('Extracted text from file:', resumeText.substring(0, 200) + '...');
+          } catch (error) {
+            console.error('Error processing uploaded file:', error);
+            toast({
+              title: "File processing error",
+              description: "Could not extract text from the uploaded file. Please try uploading again or use manual text input.",
+              variant: "destructive",
+            });
+            resumeText = `File: ${uploadedFileName}\nError: Could not extract content. Please try manual text input.`;
+          }
         }
 
         if (resumeText.trim()) {

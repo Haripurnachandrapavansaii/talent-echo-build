@@ -44,6 +44,23 @@ const Upload = () => {
     return validTypes.includes(file.type) || validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
   };
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          // Remove the data URL prefix to get just the base64 data
+          const base64 = reader.result.split(',')[1];
+          resolve(base64);
+        } else {
+          reject(new Error('Failed to convert file to base64'));
+        }
+      };
+      reader.onerror = error => reject(error);
+    });
+  };
+
   const handleContinue = async () => {
     console.log('Continue button clicked');
     console.log('Uploaded file:', uploadedFile);
@@ -63,8 +80,23 @@ const Upload = () => {
     try {
       // Store the content for the next step
       if (uploadedFile) {
-        // For now, we'll just store the file name and proceed to parse
         localStorage.setItem('uploaded_file_name', uploadedFile.name);
+        
+        // Convert file to base64 for storage
+        try {
+          const base64Data = await fileToBase64(uploadedFile);
+          localStorage.setItem('uploaded_file_data', base64Data);
+          console.log('File converted to base64 and stored');
+        } catch (error) {
+          console.error('Error converting file to base64:', error);
+          toast({
+            title: "File processing error",
+            description: "There was an issue processing your file. Please try again.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
       }
       
       if (manualText.trim()) {
