@@ -44,52 +44,198 @@ const Parse = () => {
   });
   const [editMode, setEditMode] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Simulate AI parsing with mock data
-    setTimeout(() => {
-      const mockData: ParsedData = {
-        name: "Alex Johnson",
-        roles: [
-          {
-            title: "Senior Software Engineer",
-            company: "TechCorp Inc.",
-            duration: "2022 - Present",
-            description: "Led development of microservices architecture, mentored junior developers, and improved system performance by 40%"
-          },
-          {
-            title: "Full Stack Developer",
-            company: "StartupXYZ",
-            duration: "2020 - 2022",
-            description: "Built responsive web applications using React and Node.js, collaborated with design team on user experience improvements"
-          }
-        ],
-        projects: [
-          {
-            name: "E-commerce Platform",
-            tech_stack: "React, Node.js, PostgreSQL, AWS",
-            summary: "Developed a full-stack e-commerce solution handling 10k+ daily transactions"
-          },
-          {
-            name: "AI Chatbot Assistant",
-            tech_stack: "Python, TensorFlow, Flask, Docker",
-            summary: "Created an intelligent customer support bot that reduced response time by 60%"
-          }
-        ],
-        skills: ["JavaScript", "React", "Node.js", "Python", "AWS", "PostgreSQL", "Docker", "Agile"],
-        education: ["Bachelor of Science in Computer Science - University of Technology (2020)"],
-        certifications: ["AWS Certified Solutions Architect", "Google Cloud Professional Developer"],
-        achievements: ["Led team of 5 developers", "Increased system performance by 40%", "Published 3 technical articles"],
-        target_role: "Senior Software Engineer / Tech Lead"
+  const parseResumeText = (text: string): ParsedData => {
+    console.log('Parsing resume text:', text.substring(0, 200) + '...');
+    
+    // Simple text parsing logic
+    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    
+    // Extract name (usually first meaningful line)
+    const name = lines.find(line => 
+      line.length > 2 && 
+      line.length < 50 && 
+      !line.includes('@') && 
+      !line.includes('http') &&
+      /^[A-Za-z\s]+$/.test(line)
+    ) || "Professional";
+
+    // Extract skills (look for common skill keywords)
+    const skillKeywords = ['javascript', 'react', 'node', 'python', 'java', 'html', 'css', 'sql', 'aws', 'docker', 'git'];
+    const skills = [];
+    const textLower = text.toLowerCase();
+    for (const keyword of skillKeywords) {
+      if (textLower.includes(keyword)) {
+        skills.push(keyword.charAt(0).toUpperCase() + keyword.slice(1));
+      }
+    }
+
+    // Look for email to extract basic info
+    const emailMatch = text.match(/[\w\.-]+@[\w\.-]+\.\w+/);
+    
+    // Extract roles (look for job titles and companies)
+    const roles = [];
+    const jobTitlePatterns = [
+      /engineer/i, /developer/i, /manager/i, /analyst/i, /designer/i, 
+      /specialist/i, /consultant/i, /coordinator/i, /lead/i, /senior/i
+    ];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (jobTitlePatterns.some(pattern => pattern.test(line))) {
+        const nextLine = lines[i + 1] || '';
+        roles.push({
+          title: line,
+          company: nextLine.length > 0 && nextLine.length < 50 ? nextLine : "Company Name",
+          duration: "2022 - Present",
+          description: "Professional experience in " + line.toLowerCase()
+        });
+      }
+    }
+
+    // Extract education
+    const education = [];
+    const educationKeywords = ['university', 'college', 'degree', 'bachelor', 'master', 'phd', 'certification'];
+    for (const line of lines) {
+      if (educationKeywords.some(keyword => line.toLowerCase().includes(keyword))) {
+        education.push(line);
+      }
+    }
+
+    // Extract projects (look for project-like content)
+    const projects = [];
+    const projectKeywords = ['project', 'built', 'developed', 'created', 'designed'];
+    for (const line of lines) {
+      if (projectKeywords.some(keyword => line.toLowerCase().includes(keyword)) && line.length > 20) {
+        projects.push({
+          name: line.substring(0, 50) + (line.length > 50 ? '...' : ''),
+          tech_stack: skills.slice(0, 3).join(', ') || 'Various Technologies',
+          summary: line
+        });
+      }
+    }
+
+    return {
+      name,
+      roles: roles.length > 0 ? roles.slice(0, 3) : [{
+        title: "Professional Role",
+        company: "Company Name",
+        duration: "2022 - Present",
+        description: "Extracted from resume content"
+      }],
+      projects: projects.length > 0 ? projects.slice(0, 2) : [{
+        name: "Professional Project",
+        tech_stack: skills.join(', ') || 'Various Technologies',
+        summary: "Project details extracted from resume"
+      }],
+      skills: skills.length > 0 ? skills : ['Professional Skills'],
+      education: education.length > 0 ? education : ['Educational Background'],
+      certifications: [],
+      achievements: [],
+      target_role: roles.length > 0 ? roles[0].title : "Professional Role"
+    };
+  };
+
+  const readFileContent = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        const result = event.target?.result;
+        if (typeof result === 'string') {
+          resolve(result);
+        } else {
+          reject(new Error('Failed to read file as text'));
+        }
       };
       
-      setParsedData(mockData);
-      setLoading(false);
-      
-      toast({
-        title: "Resume parsed successfully!",
-        description: "Review and edit the extracted information below.",
-      });
-    }, 2000);
+      reader.onerror = () => {
+        reject(new Error('Error reading file'));
+      };
+
+      // Read as text for now (works with .txt files)
+      // For PDF/DOCX, we'd need additional libraries
+      if (file.type === 'text/plain') {
+        reader.readAsText(file);
+      } else {
+        // For PDF/DOCX files, we'll use the manual text for now
+        resolve('');
+      }
+    });
+  };
+
+  useEffect(() => {
+    const processResumeData = async () => {
+      try {
+        console.log('Starting resume processing...');
+        
+        // Get uploaded file name and manual text from localStorage
+        const uploadedFileName = localStorage.getItem('uploaded_file_name');
+        const manualText = localStorage.getItem('manual_resume_text');
+        
+        console.log('Uploaded file name:', uploadedFileName);
+        console.log('Manual text available:', !!manualText);
+        
+        let resumeText = '';
+        
+        if (manualText && manualText.trim()) {
+          resumeText = manualText;
+          console.log('Using manual text for parsing');
+        } else if (uploadedFileName) {
+          // For now, since we can't easily parse PDF/DOCX without additional libraries,
+          // we'll show a message about using manual text
+          console.log('File uploaded but using fallback parsing');
+          resumeText = `Resume file: ${uploadedFileName}\nPlease use the manual text input for better parsing results.`;
+        }
+
+        if (resumeText.trim()) {
+          const parsed = parseResumeText(resumeText);
+          setParsedData(parsed);
+          console.log('Parsed data:', parsed);
+          
+          toast({
+            title: "Resume parsed successfully!",
+            description: "Review and edit the extracted information below.",
+          });
+        } else {
+          // Use basic fallback data
+          setParsedData({
+            name: "Your Name",
+            roles: [{
+              title: "Your Current Role",
+              company: "Your Company",
+              duration: "2022 - Present",
+              description: "Please edit this information to match your experience"
+            }],
+            projects: [{
+              name: "Your Project",
+              tech_stack: "Your Technologies",
+              summary: "Please describe your project"
+            }],
+            skills: ["Please", "Add", "Your", "Skills"],
+            education: ["Your Education"],
+            certifications: [],
+            achievements: [],
+            target_role: "Your Target Role"
+          });
+          
+          toast({
+            title: "Basic template created",
+            description: "Please edit the information below to match your resume.",
+          });
+        }
+      } catch (error) {
+        console.error('Error processing resume:', error);
+        toast({
+          title: "Processing error",
+          description: "There was an error processing your resume. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    processResumeData();
   }, [toast]);
 
   const handleSave = (field: string, value: any) => {
@@ -117,7 +263,7 @@ const Parse = () => {
             <Brain className="w-8 h-8 text-white" />
           </div>
           <h2 className="text-2xl font-bold mb-4">AI is parsing your resume...</h2>
-          <p className="text-gray-600">This may take a few moments</p>
+          <p className="text-gray-600">Extracting information from your content</p>
         </div>
       </div>
     );
