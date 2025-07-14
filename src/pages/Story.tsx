@@ -5,6 +5,27 @@ import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { Sparkles, ArrowLeft, RefreshCw, Copy, Edit, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { generatePersonalizedStory } from "@/utils/storyGenerator";
+
+interface ParsedData {
+  name: string;
+  roles: Array<{
+    title: string;
+    company: string;
+    duration: string;
+    description: string;
+  }>;
+  projects: Array<{
+    name: string;
+    tech_stack: string;
+    summary: string;
+  }>;
+  skills: string[];
+  education: string[];
+  certifications: string[];
+  achievements: string[];
+  target_role: string;
+}
 
 const Story = () => {
   const navigate = useNavigate();
@@ -13,46 +34,59 @@ const Story = () => {
   const [story, setStory] = useState("");
   const [tagline, setTagline] = useState("");
   const [softSkills, setSoftSkills] = useState<Array<{skill: string, reasoning: string}>>([]);
+  const [parsedData, setParsedData] = useState<ParsedData | null>(null);
+
+  const generateStory = (data: ParsedData) => {
+    console.log('Generating story for parsed data:', data);
+    const storyData = generatePersonalizedStory(data);
+    setStory(storyData.story);
+    setTagline(storyData.tagline);
+    setSoftSkills(storyData.softSkills);
+  };
 
   useEffect(() => {
-    // Simulate AI story generation
-    setTimeout(() => {
-      const generatedStory = `My journey in technology began with a simple curiosity about how things work, but it quickly evolved into a passion for creating solutions that make a real difference. As a Senior Software Engineer at TechCorp Inc., I've had the privilege of leading teams through complex challenges, turning ambitious ideas into scalable systems that serve thousands of users daily.
-
-What drives me most is the intersection of technical excellence and human impact. Whether I'm architecting microservices that improve system performance by 40% or mentoring junior developers who bring fresh perspectives to our team, I've learned that the best solutions come from collaboration and continuous learning. My experience spans the full spectrum of development - from building responsive web applications at StartupXYZ to developing AI-powered chatbots that revolutionize customer support.
-
-I thrive in environments where innovation meets execution. My background in both startup agility and enterprise-scale solutions has taught me to balance rapid iteration with robust architecture. I believe in writing code that not only works today but stands the test of time, and in building teams that are as passionate about clean code as they are about solving real-world problems.
-
-Looking ahead, I'm excited about the opportunities to merge my technical leadership skills with emerging technologies. I see myself continuing to bridge the gap between complex technical challenges and meaningful business outcomes, always with an eye toward mentoring the next generation of developers and contributing to technology that makes our world a little bit better.`;
-
-      const generatedTagline = "Turning complex problems into elegant solutions since 2020";
-      
-      const generatedSoftSkills = [
-        {
-          skill: "Leadership",
-          reasoning: "Led teams of 5+ developers and improved system performance through strategic technical decisions"
-        },
-        {
-          skill: "Mentorship",
-          reasoning: "Consistently mentored junior developers, helping them grow their technical and professional skills"
-        },
-        {
-          skill: "Innovation",
-          reasoning: "Developed AI-powered solutions and modern architectures that solved real business challenges"
+    const loadAndGenerateStory = () => {
+      try {
+        // Get parsed data from localStorage
+        const storedData = localStorage.getItem('storyCV_parsed');
+        if (!storedData) {
+          toast({
+            title: "No data found",
+            description: "Please go back and parse your resume first.",
+            variant: "destructive",
+          });
+          navigate('/parse');
+          return;
         }
-      ];
 
-      setStory(generatedStory);
-      setTagline(generatedTagline);
-      setSoftSkills(generatedSoftSkills);
-      setLoading(false);
+        const data: ParsedData = JSON.parse(storedData);
+        setParsedData(data);
+        
+        console.log('Loaded parsed data:', data);
+        
+        // Generate personalized story
+        generateStory(data);
+        
+        setLoading(false);
+        
+        toast({
+          title: "Your personalized story is ready!",
+          description: `AI has crafted a compelling narrative for ${data.name}.`,
+        });
+      } catch (error) {
+        console.error('Error generating story:', error);
+        toast({
+          title: "Story generation failed",
+          description: "There was an error creating your story. Please try again.",
+          variant: "destructive",
+        });
+        setLoading(false);
+      }
+    };
 
-      toast({
-        title: "Your story is ready!",
-        description: "AI has crafted your personalized career narrative.",
-      });
-    }, 3000);
-  }, [toast]);
+    // Simulate AI processing time
+    setTimeout(loadAndGenerateStory, 2500);
+  }, [toast, navigate]);
 
   const handleCopy = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
@@ -63,9 +97,13 @@ Looking ahead, I'm excited about the opportunities to merge my technical leaders
   };
 
   const handleRegenerate = () => {
+    if (!parsedData) return;
+    
     setLoading(true);
-    // Simulate regeneration
+    
+    // Regenerate with slight delay to show loading
     setTimeout(() => {
+      generateStory(parsedData);
       setLoading(false);
       toast({
         title: "Story regenerated!",
@@ -91,8 +129,8 @@ Looking ahead, I'm excited about the opportunities to merge my technical leaders
           <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6 animate-spin">
             <Sparkles className="w-8 h-8 text-white" />
           </div>
-          <h2 className="text-2xl font-bold mb-4">Crafting your story...</h2>
-          <p className="text-gray-600">AI is weaving your experiences into a compelling narrative</p>
+          <h2 className="text-2xl font-bold mb-4">Crafting your personalized story...</h2>
+          <p className="text-gray-600">AI is analyzing your experience and creating a compelling narrative</p>
         </div>
       </div>
     );
@@ -122,10 +160,10 @@ Looking ahead, I'm excited about the opportunities to merge my technical leaders
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Your Career Story
+              {parsedData?.name}'s Career Story
             </h1>
             <p className="text-xl text-gray-600">
-              AI has crafted a compelling narrative from your experience
+              AI has crafted a compelling narrative from your unique experience
             </p>
           </div>
 
@@ -139,8 +177,9 @@ Looking ahead, I'm excited about the opportunities to merge my technical leaders
                   size="sm"
                   onClick={handleRegenerate}
                   className="text-blue-600"
+                  disabled={loading}
                 >
-                  <RefreshCw className="w-4 h-4 mr-2" />
+                  <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                   Regenerate
                 </Button>
                 <Button
@@ -201,9 +240,10 @@ Looking ahead, I'm excited about the opportunities to merge my technical leaders
               variant="outline"
               size="lg"
               className="px-8 py-6 text-lg"
+              onClick={() => navigate('/parse')}
             >
               <Edit className="w-5 h-5 mr-2" />
-              Edit Story
+              Edit Resume Data
             </Button>
             <Button
               size="lg"
