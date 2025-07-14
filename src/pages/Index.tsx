@@ -2,16 +2,10 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
-import { Upload, Sparkles, Brain, Mic, Image, MessageSquare, LogOut } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { Upload, Sparkles, Brain, Mic, Image, MessageSquare } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
-
-  const handleSignOut = async () => {
-    await signOut();
-  };
 
   const features = [
     {
@@ -50,7 +44,7 @@ const Index = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Header */}
       <header className="container mx-auto px-4 py-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-white" />
@@ -59,20 +53,6 @@ const Index = () => {
               StoryCV
             </span>
           </div>
-          
-          {user ? (
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">Welcome, {user.email}</span>
-              <Button variant="outline" onClick={handleSignOut}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Sign Out
-              </Button>
-            </div>
-          ) : (
-            <Button variant="outline" onClick={() => navigate('/auth')}>
-              Sign In
-            </Button>
-          )}
         </div>
       </header>
 
@@ -90,10 +70,10 @@ const Index = () => {
             <Button 
               size="lg" 
               className="text-lg px-8 py-6 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transition-all duration-300 transform hover:scale-105"
-              onClick={() => user ? navigate('/upload') : navigate('/auth')}
+              onClick={() => navigate('/upload')}
             >
               <Upload className="w-5 h-5 mr-2" />
-              {user ? 'Upload Resume' : 'Get Started'}
+              Upload Resume
             </Button>
             <Button 
               size="lg" 
